@@ -2,10 +2,9 @@
 package edu.metu.ceng790.hw2
 
 import org.apache.log4j.{Level, Logger}
-import org.apache.spark.SparkContext
-import org.apache.spark.mllib.recommendation.Rating
+import org.apache.spark.mllib.recommendation.{ALS, Rating}
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.types._
+
 
 
 object Part1 {
@@ -30,17 +29,39 @@ object Part1 {
     val sum_of_ratings_per_user = ratings_grouped_by_user.map(x => (x._1, x._2.map(coproduct => coproduct.rating).sum))
     // Number of ratings per used is mapped as -> (user, Number of ratings)
     val number_of_ratings_per_used = ratings_grouped_by_user.map(x => (x._1, x._2.size))
+    // Avg Rating Per User and convert it to Map (https://spark.apache.org/docs/latest/api/python/reference/api/pyspark.RDD.collectAsMap.html)
+    val avg_movie_rating = sum_of_ratings_per_user.join(number_of_ratings_per_used).
+                  map{case (user, (sum_of_ratings, number_of_ratings))
+                      => (user, sum_of_ratings/number_of_ratings)}.collectAsMap()
+
     // In order to normalize ratings, we need to subtract the average ratings for each rating
+    // I subtracted avg rating of user from ratings
     val ratings_w_normalize = ratings.map( f =>
       Rating(f.user,
-             f.product,
-            (f.rating -
-              (sum_of_ratings_per_user.filter(x => x._1 == f.user).map(x => x._2).collect()(0))
-                /
-              (number_of_ratings_per_used.filter(x => x._1 == f.user).map(x => x._2).collect()(0))
-            )
-            ))
+        f.product,
+        (f.rating - (avg_movie_rating(f.user)
+          )
+      )))
     // ---------------------------------------------- //
+    // Split Data to Train and Test Set
+    val (train_set, test_set) = ALSParameterTuning.data_splitter(ratings_w_normalize)
+    // ---------------------------------------------- //
+    // MODEL AND TRAINING //
+    // Declaration of parameters
+    val rank_variables=Array(8, 12)
+    val iterations_variables=Array(10, 20)
+    val lambda_variables = Array(0.01, 1.0, 10.0)
+    // Declaration of the model
+    for (each_rank <- rank_variables){
+      for (each_iteration <- iterations_variables){
+        for (each_lambda <- lambda_variables){
+          // Training
+          val model = ALS.train(train_set, rank = each_rank, iterations = each_iteration, lambda = each_lambda)
+          // Predicting
+          val predictions = model.predict(test_set.map(line => (line.user, line.product))).map(x =>(x.user, x.product, x.rating + avg_movie_rating(x.user)))
+        }
+      }
+    }
 
     spark.stop()
   }
