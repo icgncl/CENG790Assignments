@@ -44,7 +44,10 @@ object Part1 {
       )))
     // ---------------------------------------------- //
     // Split Data to Train and Test Set
-    val (train_set, test_set) = ALSParameterTuning.data_splitter(ratings_w_normalize)
+    val (train_set, test_set) = ALSParameterTuning.Data_splitter(ratings_w_normalize)
+    // ---------------------------------------------- //
+    // It will be used in the prediction
+    val test_set_with_key = test_set.map(x =>((x.user, x.product), (x.rating+ avg_movie_rating(x.user)))).cache()
     // ---------------------------------------------- //
     // MODEL AND TRAINING //
     // Declaration of parameters
@@ -59,6 +62,12 @@ object Part1 {
           val model = ALS.train(train_set, rank = each_rank, iterations = each_iteration, lambda = each_lambda)
           // Predicting
           val predictions = model.predict(test_set.map(line => (line.user, line.product))).map(x =>(x.user, x.product, x.rating + avg_movie_rating(x.user)))
+          // Joining predictions
+          val predictions_with_key = predictions.map(x=> ((x._1, x._2), (x._3)))
+          val test_Set_with_predictions = test_set_with_key.join(predictions_with_key)
+          // Calculating the MSE
+          val MSE = ALSParameterTuning.Msecalculator(test_Set_with_predictions)
+          println(s"Model training with rank:$each_rank, iteration:$each_iteration, lambda:$each_lambda is completed. MSE is $MSE")
         }
       }
     }
