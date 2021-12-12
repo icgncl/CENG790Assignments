@@ -12,6 +12,10 @@ object Part1 {
     // In order to show only errors
     Logger.getLogger("org").setLevel(Level.ERROR)
     val spark = SparkSession.builder().appName("Recommendation System").config("spark.master", "local[*]").getOrCreate()
+
+    // ---------------------------------------- //
+    // PART 1. Train a model and Tune Parameters //
+    println("PART 1. Train a model and Tune Parameters")
     // Reading the file
     val data_with_header= spark.sparkContext.textFile("ml-20m/ratings.csv")
     // In order to remove header from RDD
@@ -71,7 +75,9 @@ object Part1 {
         }
       }
     }
-
+    // ---------------------------------------- //
+    // PART 1. Getting Your Own Recommendations //
+    println("PART 1. Getting Your Own Recommendations")
     spark.stop()
   }
 }
