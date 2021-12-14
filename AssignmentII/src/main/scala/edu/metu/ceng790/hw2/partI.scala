@@ -8,7 +8,6 @@ import org.apache.spark.sql.SparkSession
 import scala.util.Random
 
 
-
 object Part1 {
   def main(args: Array[String]): Unit = {
     // In order to show only errors
@@ -89,7 +88,7 @@ object Part1 {
     val movies_file_w_header = spark.sparkContext.textFile("ml-20m/movies.csv")
     // In order to remove header from RDD
     val data_header_for_movies = movies_file_w_header.first()
-    val movies_data = movies_file_w_header.filter(x => x!=data_header_for_movies)
+    val movies_data = movies_file_w_header.filter(x => x != data_header_for_movies)
     // Visualize the first 10 movies
     movies_data.take(10).foreach(println)
 
@@ -100,7 +99,7 @@ object Part1 {
     val movie_ratings_w_header = spark.sparkContext.textFile("ml-20m/ratings.csv")
     // In order to remove header from RDD
     val data_header_for_movie_ratings = movie_ratings_w_header.first()
-    val movie_ratings = movie_ratings_w_header.filter(x => x!=data_header_for_movie_ratings)
+    val movie_ratings = movie_ratings_w_header.filter(x => x != data_header_for_movie_ratings)
     movie_ratings.take(10).foreach(println)
 
     // In order to find most rated movies, only movieID has taken from ratings and they were counted desc, filtered first 200 movieIDs
@@ -113,7 +112,7 @@ object Part1 {
     val selectedMovies = Random.shuffle(selectedMovies_200_movie).take(40)
 
     selectedMovies.foreach(println)
-
+    collaborative_filtering.elicitateRatings(selectedMovies)
 
 
     spark.stop()
