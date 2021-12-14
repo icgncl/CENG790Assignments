@@ -5,6 +5,8 @@ import org.apache.log4j.{Level, Logger}
 import org.apache.spark.mllib.recommendation.{ALS, Rating}
 import org.apache.spark.sql.SparkSession
 
+import scala.util.Random
+
 
 
 object Part1 {
@@ -13,6 +15,7 @@ object Part1 {
     Logger.getLogger("org").setLevel(Level.ERROR)
     val spark = SparkSession.builder().appName("Recommendation System").config("spark.master", "local[*]").getOrCreate()
 
+    /*
     // ---------------------------------------- //
     // PART 1. Train a model and Tune Parameters //
     println("PART 1. Train a model and Tune Parameters")
@@ -76,8 +79,43 @@ object Part1 {
       }
     }
     // ---------------------------------------- //
+
+     */
+
     // PART 1. Getting Your Own Recommendations //
     println("PART 1. Getting Your Own Recommendations")
+
+    // Read movies csv file
+    val movies_file_w_header = spark.sparkContext.textFile("ml-20m/movies.csv")
+    // In order to remove header from RDD
+    val data_header_for_movies = movies_file_w_header.first()
+    val movies_data = movies_file_w_header.filter(x => x!=data_header_for_movies)
+    // Visualize the first 10 movies
+    movies_data.take(10).foreach(println)
+
+    // Splitting and Mapping movies
+    val movies = movies_data.map(collaborative_filtering.parseLineforMovies).collectAsMap()
+
+    // Reading ratings csv file
+    val movie_ratings_w_header = spark.sparkContext.textFile("ml-20m/ratings.csv")
+    // In order to remove header from RDD
+    val data_header_for_movie_ratings = movie_ratings_w_header.first()
+    val movie_ratings = movie_ratings_w_header.filter(x => x!=data_header_for_movie_ratings)
+    movie_ratings.take(10).foreach(println)
+
+    // In order to find most rated movies, only movieID has taken from ratings and they were counted desc, filtered first 200 movieIDs
+    val ratings = movie_ratings.map(collaborative_filtering.parseLineforRatings).map(x => (x))
+    val most_rated_movie_ids = ratings.countByValue().toArray.sortWith(_._2 > _._2).take(200).map(_._1).toSet
+
+    // Merge most rated movies and their details
+    // Shuffle them and take first 40 movies
+    val selectedMovies_200_movie = movies.filterKeys(most_rated_movie_ids).toList
+    val selectedMovies = Random.shuffle(selectedMovies_200_movie).take(40)
+
+    selectedMovies.foreach(println)
+
+
+
     spark.stop()
   }
 }
