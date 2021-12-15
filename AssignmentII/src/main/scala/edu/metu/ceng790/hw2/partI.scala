@@ -14,7 +14,6 @@ object Part1 {
     Logger.getLogger("org").setLevel(Level.ERROR)
     val spark = SparkSession.builder().appName("Recommendation System").config("spark.master", "local[*]").getOrCreate()
 
-    /*
     // ---------------------------------------- //
     // PART 1. Train a model and Tune Parameters //
     println("PART 1. Train a model and Tune Parameters")
@@ -60,6 +59,8 @@ object Part1 {
     val rank_variables=Array(8, 12)
     val iterations_variables=Array(10, 20)
     val lambda_variables = Array(0.01, 1.0, 10.0)
+
+
     // Declaration of the model
     for (each_rank <- rank_variables){
       for (each_iteration <- iterations_variables){
@@ -77,9 +78,7 @@ object Part1 {
         }
       }
     }
-    // ---------------------------------------- //
 
-     */
 
     // PART 1. Getting Your Own Recommendations //
     println("PART 1. Getting Your Own Recommendations")
@@ -103,18 +102,32 @@ object Part1 {
     movie_ratings.take(10).foreach(println)
 
     // In order to find most rated movies, only movieID has taken from ratings and they were counted desc, filtered first 200 movieIDs
-    val ratings = movie_ratings.map(collaborative_filtering.parseLineforRatings).map(x => (x))
-    val most_rated_movie_ids = ratings.countByValue().toArray.sortWith(_._2 > _._2).take(200).map(_._1).toSet
+    val ratings_2 = movie_ratings.map(collaborative_filtering.parseLineforRatings).map(x => (x))
+    val most_rated_movie_ids = ratings_2.countByValue().toArray.sortWith(_._2 > _._2).take(200).map(_._1).toSet
 
     // Merge most rated movies and their details
     // Shuffle them and take first 40 movies
     val selectedMovies_200_movie = movies.filterKeys(most_rated_movie_ids).toList
     val selectedMovies = Random.shuffle(selectedMovies_200_movie).take(40)
 
-    selectedMovies.foreach(println)
-    collaborative_filtering.elicitateRatings(selectedMovies)
+    // Terminal user ratings are collected
+    val terminal_user_ratings = collaborative_filtering.elicitateRatings(selectedMovies)
 
+    // Normalize user ratings
+    val avg_rating_of_terminal_user = terminal_user_ratings.groupBy(x => x.user).map(x => (x._2.map(x=> x.rating).sum/x._2.length)).sum
+    val normalized_terminal_user_ratings = terminal_user_ratings.map(x => (x.user, x.product, x.rating-avg_rating_of_terminal_user)).map(x=> Rating(user = x._1, product = x._2, rating = x._3))
+    // Convert normalized user to RDD in order to union it with train_set
+    val RDD_normalized_terminal_user = spark.sparkContext.parallelize(normalized_terminal_user_ratings)
 
+    val new_training_set = train_set.union(RDD_normalized_terminal_user)
+    // Training new model with best parameters
+    val final_model = ALS.train(new_training_set, rank = 8, iterations = 20, lambda = 0.01)
+
+    val recommended_products_for_terminal_user = final_model.recommendProducts(19031903, 20).map(x=> x.product).toSet
+
+    val recommended_movies = movies.filterKeys(recommended_products_for_terminal_user).toList
+    println("Recommended movies for terminal user")
+    recommended_movies.map(x=>x._2).foreach(println)
     spark.stop()
   }
 }
