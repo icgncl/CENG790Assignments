@@ -9,6 +9,12 @@ import scala.util.Random
 
 
 object nearestneighbors {
+  def parseLineforMovieswithGenres(line: String): (Int, Array[String]) = {
+    val fields = line.split(",")
+    val movieID = fields(0).toInt
+    val genres = fields(2).split("\\|")
+    return (movieID, genres)
+  }
   def main(args: Array[String]): Unit = {
     // In order to show only errors
     Logger.getLogger("org").setLevel(Level.ERROR)
@@ -56,7 +62,7 @@ object nearestneighbors {
     val movieNames = movies_data.map(collaborative_filtering.parseLineforMovies).collectAsMap()
 
     //-------------------------- PART 2.3 --------------------------//
-
+    val movieGenres = movies_data.map(nearestneighbors.parseLineforMovieswithGenres).collectAsMap()
     spark.stop()
   }
 }
