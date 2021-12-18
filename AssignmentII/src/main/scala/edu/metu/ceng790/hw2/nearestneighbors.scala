@@ -33,17 +33,21 @@ object nearestneighbors {
     val normalized_terminal_user_ratings = terminal_user_ratings.filter(x => (x.rating>=avg_rating_of_terminal_user))
     return normalized_terminal_user_ratings
   }
-  def knn(testUser: Map[String, Int], userVectors: RDD[(Int, Map[String, Int])], k: Int, ratings_w_normalize: RDD[Rating]): (Set[Int]) = {
+  def knn(testUser: Map[String, Int], userVectors: RDD[(Int, Map[String, Int])], k: Int, goodRatings: RDD[Rating]): (Set[Int]) = {
     var test_user_mapping: Map[Int, Double] = Map()
     for(each_user <- userVectors.collectAsMap()){
       val user_map = each_user._2
       val user_id = each_user._1
+      // For each user similarity is calculated
       val user_similarity = nearestneighbors.userSim(testUser, user_map)
       test_user_mapping += (user_id -> user_similarity)
     }
+    // Mapping is sorted as descending order for similarity
     val sorted_Map = Map(test_user_mapping.toSeq.sortWith(_._2 > _._2):_*)
+    // Top k result is taken
     val Map_k_users = sorted_Map.take(k).keys.toSet
-    val rated_movie_ids = ratings_w_normalize.filter{line => Map_k_users.contains(line.user)}.map(rate => rate.product).collect().toSet
+    // Top k users' favourite movie IDs are returned
+    val rated_movie_ids = goodRatings.filter{line => Map_k_users.contains(line.user)}.map(rate => rate.product).collect().toSet
     return rated_movie_ids
   }
   def userSim(user1_genres: Map[String, Int], user2_genres: Map[String, Int]): (Double) = {
@@ -121,7 +125,7 @@ object nearestneighbors {
 
     //-------------------------- PART 2.1 --------------------------//
     // In order to only keep ratings which are higher than avg. ratings
-    val ratings_w_normalize = ratings.filter(f =>
+    val goodRatings = ratings.filter(f =>
       f.rating > avg_movie_rating(f.user)
     )
 
@@ -138,7 +142,7 @@ object nearestneighbors {
     //--------------------------------------------------------------//
 
     //-------------------------- PART 2.4 --------------------------//
-    val user_w_genres = ratings_w_normalize.map(f => (f.user, movieGenres(f.product))).groupByKey.map(eachuser => (eachuser._1, eachuser._2.toArray.flatten))
+    val user_w_genres = goodRatings.map(f => (f.user, movieGenres(f.product))).groupByKey.map(eachuser => (eachuser._1, eachuser._2.toArray.flatten))
     val userVectors = user_w_genres.map(each_user => (each_user._1, each_user._2.groupBy(identity).map(each_genre => (each_genre._1, each_genre._2.length))))
 
     //-------------------------------------------------------------//
@@ -146,14 +150,19 @@ object nearestneighbors {
     //------------------- PART 2.5 and PART 2.6 -------------------//
 
     val terminal_user_ratings = get_terminal_user(movies_data, data)
+    // I have converted it to RDD with parallelize function
     val terminal_user_ratings_RDD = spark.sparkContext.parallelize(terminal_user_ratings)
 
+    // User movies with genres
     val terminal_w_genres = terminal_user_ratings_RDD.map(f => (f.user, movieGenres(f.product))).groupByKey.map(eachuser => (eachuser._1, eachuser._2.toArray.flatten))
+    // Vectors for terminal user is created
     val terminalVectors = terminal_w_genres.map(each_user => (each_user._1, each_user._2.groupBy(identity).map(each_genre => (each_genre._1, each_genre._2.length))))
+    // It is converted to map
     val terminalVectors_map = terminalVectors.map(_._2).collect()(0)
     // Recom -> it is a set which includes movie ids
-    val recom = nearestneighbors.knn(terminalVectors_map, userVectors, k = 2, ratings_w_normalize)
-
+    val recom = nearestneighbors.knn(terminalVectors_map, userVectors, k = 2, goodRatings)
+    println("Recommended Movies:")
+    movieNames.filterKeys(recom).foreach(println)
 
 
 
