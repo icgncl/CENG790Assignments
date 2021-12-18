@@ -11,10 +11,42 @@ import scala.util.control._
 
 
 object nearestneighbors {
+  def get_terminal_user(movies_data: RDD[String], movie_ratings: RDD[String]): Array[Rating] = {
+    // This function is taken from Part1.scala //
+    // --------------------------------------- //
+    // Splitting and Mapping movies
+    val movies = movies_data.map(collaborative_filtering.parseLineforMovies).collectAsMap()
 
-  def userSim(user1: RDD[(Int, Map[String, Int])], user2: RDD[(Int, Map[String, Int])]): (Double) = {
-    val user1_genres = user1.map(x => x._2).collect()(0)
-    val user2_genres = user2.map(x => x._2).collect()(0)
+    // In order to find most rated movies, only movieID has taken from ratings and they were counted desc, filtered first 200 movieIDs
+    val ratings_2 = movie_ratings.map(collaborative_filtering.parseLineforRatings).map(x => (x))
+    val most_rated_movie_ids = ratings_2.countByValue().toArray.sortWith(_._2 > _._2).take(200).map(_._1).toSet
+
+    // Merge most rated movies and their details
+    // Shuffle them and take first 40 movies
+    val selectedMovies_200_movie = movies.filterKeys(most_rated_movie_ids).toList
+    val selectedMovies = Random.shuffle(selectedMovies_200_movie).take(40)
+
+    // Terminal user ratings are collected
+    val terminal_user_ratings = collaborative_filtering.elicitateRatings(selectedMovies)
+    // Normalize user ratings
+    val avg_rating_of_terminal_user = terminal_user_ratings.groupBy(x => x.user).map(x => (x._2.map(x=> x.rating).sum/x._2.length)).sum
+    val normalized_terminal_user_ratings = terminal_user_ratings.filter(x => (x.rating>=avg_rating_of_terminal_user))
+    return normalized_terminal_user_ratings
+  }
+  def knn(testUser: Map[String, Int], userVectors: RDD[(Int, Map[String, Int])], k: Int, ratings_w_normalize: RDD[Rating]): (Set[Int]) = {
+    var test_user_mapping: Map[Int, Double] = Map()
+    for(each_user <- userVectors.collectAsMap()){
+      val user_map = each_user._2
+      val user_id = each_user._1
+      val user_similarity = nearestneighbors.userSim(testUser, user_map)
+      test_user_mapping += (user_id -> user_similarity)
+    }
+    val sorted_Map = Map(test_user_mapping.toSeq.sortWith(_._2 > _._2):_*)
+    val Map_k_users = sorted_Map.take(k).keys.toSet
+    val rated_movie_ids = ratings_w_normalize.filter{line => Map_k_users.contains(line.user)}.map(rate => rate.product).collect().toSet
+    return rated_movie_ids
+  }
+  def userSim(user1_genres: Map[String, Int], user2_genres: Map[String, Int]): (Double) = {
     var length_of_user1 = 0.0
     var length_of_user2 = 0.0
     var similarity_mult = 0.0
@@ -107,12 +139,29 @@ object nearestneighbors {
 
     //-------------------------- PART 2.4 --------------------------//
     val user_w_genres = ratings_w_normalize.map(f => (f.user, movieGenres(f.product))).groupByKey.map(eachuser => (eachuser._1, eachuser._2.toArray.flatten))
-    val userVectors = user_w_genres.map(each_user => (each_user._1, each_user._2.groupBy(identity).map(each_genre => (each_genre._1, each_genre._2.size))))
+    val userVectors = user_w_genres.map(each_user => (each_user._1, each_user._2.groupBy(identity).map(each_genre => (each_genre._1, each_genre._2.length))))
 
-    //--------------------------------------------------------------//
+    //-------------------------------------------------------------//
 
-    //-------------------------- PART 2.5 --------------------------//
-    val userSimilarity = nearestneighbors.userSim(userVectors.filter(x => x._1 == 1), userVectors.filter(x => x._1 == 4179))
+    //------------------- PART 2.5 and PART 2.6 -------------------//
+
+    val terminal_user_ratings = get_terminal_user(movies_data, data)
+    val terminal_user_ratings_RDD = spark.sparkContext.parallelize(terminal_user_ratings)
+
+    val terminal_w_genres = terminal_user_ratings_RDD.map(f => (f.user, movieGenres(f.product))).groupByKey.map(eachuser => (eachuser._1, eachuser._2.toArray.flatten))
+    val terminalVectors = terminal_w_genres.map(each_user => (each_user._1, each_user._2.groupBy(identity).map(each_genre => (each_genre._1, each_genre._2.length))))
+    val terminalVectors_map = terminalVectors.map(_._2).collect()(0)
+    // Recom -> it is a set which includes movie ids
+    val recom = nearestneighbors.knn(terminalVectors_map, userVectors, k = 2, ratings_w_normalize)
+
+
+
+
+
+
+
+
+
     spark.stop()
   }
 }
